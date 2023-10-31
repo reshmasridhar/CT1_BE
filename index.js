@@ -1,73 +1,186 @@
-// server.js
-
 const express = require('express');
 const mongoose = require('mongoose');
+const bodyParser = require('body-parser');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 const app = express();
-const port = 5000; // Set the port for your backend server
-
-// Replace 'your-mongodb-uri' with your actual MongoDB Atlas URI
-const mongoURI = 'mongodb+srv://reshmas21it:Reshma@cluster0.t6xawj3.mongodb.net/?retryWrites=true&w=majority';
 
 // Connect to MongoDB
-mongoose.connect(mongoURI, {
+mongoose.connect('mongodb+srv://reshmas21it:Reshma@cluster0.t6xawj3.mongodb.net/?retryWrites=true&w=majority', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
 
-// Define a MongoDB schema and model for user data
-const UserSchema = new mongoose.Schema({
-  username: String,
-  email: String,
-  password: String,
-  contactNumber: String,
+
+
+app.use(bodyParser.json());
+
+
+ 
+
+  const User = mongoose.model('User', {
+    
+    username: String,
+    email: String,
+    password: String,
+    contactNumber: String,
+    
+  });
+  // Define the Appointment schema and model
+const Appointment = mongoose.model('Appointment', {
+  doctorName: String,
+  patientName: String,
+  patientEmail: String,
+  appointmentDate: Date,
+  selectedSlot: String,
 });
-
-const User = mongoose.model('User', UserSchema);
-
-app.use(express.json());
-
-// Create a route to handle user signup
-app.post('/PatientSignup', async (req, res) => {
-  const { username, email, password, contactNumber } = req.body;
-
-  try {
-    const user = new User({
-      username,
+ 
+ 
+    
+  app.post('/signup', async (req, res) => {
+    const {
+      
+      username,   
       email,
       password,
       contactNumber,
-    });
+    } = req.body;
 
-    await user.save();
-    res.json({ message: 'Signup successful' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'An error occurred during signup' });
-  }
-});
+    try {
 
-// Create a route to handle user login
-app.post('/PatientLogin', async (req, res) => { // Corrected route path
-  const { email, password } = req.body;
 
-  try {
-    const user = await User.findOne({ email, password });
+      if (!username || !email || !password || !contactNumber ) {
+        return res.status(400).json({ message: 'Please fill in all fields' });
+      }
 
-    if (user) {
-      // You can generate a JWT token and send it back for authentication
-      // For now, sending a simple response
-      res.json({ token: 'your-jwt-token' });
-    } else {
-      res.status(401).json({ error: 'Invalid email or password' });
+      const newUser = new User({
+        
+        username,
+        email,
+        password,
+        contactNumber,
+      });
+
+    
+      await newUser.save();
+
+      
+      res.status(201).json({ message: 'Registration successful!' });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Internal server error' });
     }
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'An error occurred during login' });
-  }
-});
+  });
 
-// Start the server on a different port (e.g., 5001 for the backend)
-const backendPort = 5001; // Set a different port for the backend
-app.listen(backendPort, () => {
-  console.log(`Server is running on port ${backendPort}`);
-});
+  app.post('/Patientlogin', async (req, res) => {
+    const { email, password } = req.body;
+  
+    try {
+      const user = await User.findOne({ email });
+      if (!user ) {
+        return res.status(401).json({ message: 'Invalid email or password' });
+      }
+      
+      if (password !== user.password) {
+        return res.status(401).json({ message: 'Invalid email or password' });
+      }
+  
+      // Create and send a JWT token for successful login
+      const token = jwt.sign({ userId: user._id }, 'your-secret-key', {
+        expiresIn: '1h', // You can adjust the token expiration time
+      });
+  
+      res.status(200).json({ message: 'Login successful', token });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+  app.post('/appointments', async (req, res) => {
+    const { doctorName, patientName,patientEmail, appointmentDate, selectedSlot } = req.body;
+  
+    try {
+      const appointment = new Appointment({
+        doctorName,
+        patientName,
+        patientEmail,
+        appointmentDate,
+        selectedSlot,
+      });
+  
+      const savedAppointment = await appointment.save();
+      res.json(savedAppointment);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Error saving appointment' });
+    }
+  });
+  app.get('/getUserDetails', async (req, res) => {
+    try {
+      const token = req.headers.authorization.split(' ')[1];
+      const decoded = jwt.verify(token, 'your-secret-key');
+      const user = await User.findById(decoded.userId);
+  
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+  
+      res.json(user);
+    } catch (error) {
+      res.status(401).json({ message: 'Unauthorized' });
+    }
+  });
+  app.get('/bookings', async (req, res) => {
+    const { email } = req.query;
+    try {
+      const bookings = await Appointment.find({ patientEmail: email });
+      res.json(bookings);
+    } catch (error) {
+      console.error('Error fetching bookings:', error);
+      res.status(500).json({ error: 'Error fetching bookings' });
+    }
+  });
+  app.get('/myAppointments', async (req, res) => {
+    try {
+      // Extract the user's email from the JWT token
+      const token = req.headers.authorization.split(' ')[1];
+      const decoded = jwt.verify(token, 'your-secret-key');
+      const userEmail = (await User.findById(decoded.userId)).email;
+  
+      // Query the appointments for the specific patient using their email
+      const appointments = await Appointment.find({ patientEmail: userEmail });
+  
+      res.json(appointments);
+    } catch (error) {
+      console.error('Error fetching appointments:', error);
+      res.status(500).json({ error: 'Error fetching appointments' });
+    }
+  });
+
+  app.get('/Patientlogin',(req,res)=>{});
+  app.get('/About',(req,res)=>{});
+  app.get('/Displaydoc',(req,res)=>{});
+  app.get('/DoctorSearch',(req,res)=>{});
+  app.get('/PatientPage',(req,res)=>{});
+  app.get('/PatientSignup',(req,res)=>{});
+  app.get('/myAppointmentNew', (req,res)=>{});
+  app.get('/OurDoctors', (req,res)=>{});
+  app.get('/AllDoctors', async (req, res) => {
+    try {
+      // Fetch the list of all doctors from your database or data source
+      // Replace this with the actual code to fetch doctors' data
+      const allDoctors = await Doctor.find(); // Replace Doctor with your actual model
+  
+      res.json(allDoctors);
+    } catch (error) {
+      console.error('Error fetching doctors:', error);
+      res.status(500).json({ error: 'Error fetching doctors' });
+    }
+  });
+
+  
+
+  const port = process.env.PORT || 3000;
+  app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
+  });

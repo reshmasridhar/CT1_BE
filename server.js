@@ -1,4 +1,5 @@
 const express = require('express');
+const cors=require('cors');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
@@ -14,7 +15,7 @@ mongoose.connect('mongodb+srv://reshmas21it:Reshma@cluster0.t6xawj3.mongodb.net/
 });
 
 
-
+app.use(cors());
 app.use(bodyParser.json());
 
 
